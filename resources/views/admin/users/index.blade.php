@@ -61,15 +61,28 @@
             </div>
             <form method="POST" action="{{ route('admin.users.store') }}" class="space-y-4">
                 @csrf
+
+                {{-- Tampilkan error validasi --}}
+                @if ($errors->any())
+                <div class="bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                    <p class="text-xs font-semibold text-red-600 mb-1">Gagal membuat akun:</p>
+                    <ul class="text-xs text-red-500 space-y-0.5 list-disc list-inside">
+                        @foreach ($errors->all() as $error)
+                            <li>{{ $error }}</li>
+                        @endforeach
+                    </ul>
+                </div>
+                @endif
+
                 <div>
                     <label class="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1.5">Nama</label>
-                    <input type="text" name="name" required
+                    <input type="text" name="name" required value="{{ old('name') }}"
                            class="w-full border border-stone-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-stone-900"
                            placeholder="Nama lengkap kasir">
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1.5">Email</label>
-                    <input type="email" name="email" required
+                    <input type="email" name="email" required value="{{ old('email') }}"
                            class="w-full border border-stone-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-stone-900"
                            placeholder="email@zcoffee.id">
                 </div>
@@ -77,7 +90,8 @@
                     <label class="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1.5">Password</label>
                     <input type="password" name="password" required minlength="8"
                            class="w-full border border-stone-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-stone-900"
-                           placeholder="Min. 8 karakter">
+                           placeholder="Min. 8 karakter (harus ada huruf & angka)">
+                    <p class="text-xs text-stone-400 mt-1">Contoh: <code class="bg-stone-100 px-1 rounded">Kasir123</code></p>
                 </div>
                 <div class="flex gap-3 pt-2">
                     <button type="button" onclick="document.getElementById('add-user-modal').classList.add('hidden')"
@@ -123,6 +137,13 @@
         document.getElementById('reset-form').action = `/admin/users/${userId}/reset-password`;
         document.getElementById('reset-modal').classList.remove('hidden');
     }
+
+    // Buka modal tambah kasir otomatis jika ada error validasi
+    @if ($errors->any())
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('add-user-modal').classList.remove('hidden');
+    });
+    @endif
     </script>
     @endpush
 </x-cashier-layout>
