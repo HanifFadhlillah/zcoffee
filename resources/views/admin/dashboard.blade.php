@@ -26,7 +26,6 @@
             <div class="kpi-card bg-white rounded-2xl p-5 border border-stone-100">
                 <div class="flex items-start justify-between mb-3">
                     <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-xl">💰</div>
-                    <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">+12%</span>
                 </div>
                 <p class="text-2xl font-bold text-stone-900">Rp {{ number_format($stats['revenue'], 0, ',', '.') }}</p>
                 <p class="text-xs text-stone-400 mt-1">Revenue {{ strtolower($stats['label']) }}</p>
@@ -34,7 +33,6 @@
             <div class="kpi-card bg-white rounded-2xl p-5 border border-stone-100">
                 <div class="flex items-start justify-between mb-3">
                     <div class="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-xl">📦</div>
-                    <span class="text-xs font-semibold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">+3</span>
                 </div>
                 <p class="text-2xl font-bold text-stone-900">{{ $stats['orders'] }}</p>
                 <p class="text-xs text-stone-400 mt-1">Total order {{ strtolower($stats['label']) }}</p>

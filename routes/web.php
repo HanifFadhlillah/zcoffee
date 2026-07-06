@@ -24,12 +24,12 @@ Route::prefix('order')->name('order.')->group(function () {
     Route::get('/check/{orderNumber}', [CustomerOrderController::class, 'checkPayment'])
         ->name('check');
 
-    // ── Midtrans ────────────────────────────────────────────────────────
+    // ── Xendit QRIS ─────────────────────────────────────────────────────────
     Route::post('/payment/create/{order}', [CustomerPaymentController::class, 'create'])
         ->name('payment.create');
 });
 
-// Midtrans webhook — tidak perlu auth, tapi diverifikasi via signature key
+// Xendit webhook — diverifikasi via x-callback-token
 Route::post('/payment/notification', [CustomerPaymentController::class, 'notification'])
     ->name('payment.notification');
 

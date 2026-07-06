@@ -445,12 +445,8 @@
                     const data = await res.json();
                     if (data.success && data.receipt_url) {
                         this.playDing();
-                        // Buka struk di tab baru agar tab POS ini tidak hilang
-                        window.open(data.receipt_url, '_blank');
-                        // Reset/Refresh halaman POS agar bersih untuk pelanggan berikutnya
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 500);
+                        // Redirect ke halaman struk (auto print & close), lalu POS akan reload
+                        window.location.href = data.receipt_url;
                     } else {
                         alert(data.message || 'Gagal menyimpan pesanan.');
                         this.submitting = false;

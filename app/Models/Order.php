@@ -20,9 +20,13 @@ class Order extends Model
         'customer_note',
         'processed_at',
         'completed_at',
+        // Legacy Midtrans fields (tidak aktif, ditinggalkan untuk kompatibilitas migration)
         'snap_token',
         'snap_url',
         'midtrans_transaction_id',
+        // Xendit QRIS
+        'xendit_qr_id',
+        'xendit_qr_string',
     ];
 
     protected $casts = [

@@ -265,7 +265,7 @@
                     });
                     const data = await res.json();
                     if (data.success) {
-                        if (newStatus === 'completed') {
+                        if (newStatus === 'completed' || newStatus === 'cancelled') {
                             this.activeOrders = this.activeOrders.filter(o => o.id !== order.id);
                         } else {
                             order.status = newStatus;

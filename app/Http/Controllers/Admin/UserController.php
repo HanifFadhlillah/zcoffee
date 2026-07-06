@@ -55,6 +55,10 @@ class UserController extends Controller
 
     public function resetPassword(Request $request, User $user)
     {
+        if ($user->role !== 'cashier') {
+            return back()->with('error', 'Hanya password akun kasir yang bisa direset melalui halaman ini.');
+        }
+
         $request->validate([
             'password' => ['required', Password::min(8)->letters()->numbers()],
         ]);

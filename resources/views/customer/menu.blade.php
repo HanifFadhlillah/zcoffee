@@ -373,18 +373,38 @@
                     </p>
                     <p class="text-xs mb-5" style="color: rgba(26,26,26,0.4);">Silakan scan QR Code di bawah ini untuk membayar</p>
 
-                    {{-- Kartu pembayaran QR Statis --}}
+                    {{-- Kartu pembayaran QR Dinamis (Xendit) --}}
                     <div class="rounded-2xl p-5 mb-5 w-full max-w-xs mx-auto"
                          style="background: var(--c-white); border: 1px solid rgba(139,90,0,0.15);">
                         <p class="text-xs mb-1" style="color: rgba(26,26,26,0.4);">Total Tagihan</p>
                         <p class="font-bold text-2xl mb-4" style="color: var(--c-black);" x-text="'Rp ' + formatNum(qrisTotal)"></p>
 
-                        <div class="bg-white p-2 rounded-xl border border-stone-100 shadow-sm mx-auto w-48 h-auto overflow-hidden flex items-center justify-center">
+                        {{-- Loading spinner saat QR sedang dimuat --}}
+                        <div x-show="xenditLoading" class="flex flex-col items-center justify-center py-6 gap-3">
+                            <div class="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin"
+                                 style="border-color: rgba(196,125,26,0.3); border-top-color: var(--c-golden);"></div>
+                            <p class="text-xs" style="color: rgba(26,26,26,0.4);">Memuat QR Code...</p>
+                        </div>
+
+                        {{-- QR Dinamis dari Xendit (Image rendered via qrcode.js) --}}
+                        <div x-show="!xenditLoading && xenditQrImage"
+                             class="bg-white p-2 rounded-xl border border-stone-100 shadow-sm mx-auto w-48 h-auto overflow-hidden flex items-center justify-center">
+                            <img :src="xenditQrImage" class="w-full h-auto object-contain" alt="Xendit Dynamic QR">
+                        </div>
+
+                        {{-- Fallback: QR Statis jika Xendit gagal --}}
+                        <div x-show="!xenditLoading && !xenditQrImage"
+                             class="bg-white p-2 rounded-xl border border-stone-100 shadow-sm mx-auto w-48 h-auto overflow-hidden flex items-center justify-center">
                             <img src="{{ asset('images/qris_zcoffeex.jpeg') }}" class="w-full h-auto object-contain" alt="QRIS ZCoffee">
                         </div>
 
                         <p class="text-xs mt-4 text-stone-500">Gunakan aplikasi m-banking atau e-wallet (GoPay, OVO, DANA, ShopeePay)</p>
-                        <p class="text-xs mt-1 text-amber-600 font-semibold">Tunggu di halaman ini setelah bayar, kasir akan mengkonfirmasi otomatis.</p>
+                        <p x-show="xenditQrImage" class="text-xs mt-1 font-semibold" style="color: var(--c-bean);">
+                            ✅ QR unik untuk transaksi ini — nominal sudah tertera
+                        </p>
+                        <p x-show="!xenditLoading && !xenditQrImage" class="text-xs mt-1 text-amber-600 font-semibold">
+                            Bayar sesuai total tagihan di atas, kasir akan konfirmasi otomatis.
+                        </p>
                     </div>
 
                     {{-- Countdown Timer --}}
@@ -541,9 +561,6 @@
     </div>{{-- end dark outer wrapper --}}
 
     @push('scripts')
-    {{-- Midtrans Snap.js — load sebelum Alpine --}}
-    <script src="{{ config('midtrans.snap_url') }}"
-            data-client-key="{{ config('midtrans.client_key') }}"></script>
     <script>
     function orderApp(tableNumber) {
         return {
@@ -574,9 +591,10 @@
             _pollingId: null,
             _countdownId: null,
 
-            // ── Midtrans Snap state ──
-            snapToken: null,      // token dari Midtrans untuk membuka popup Snap
-            snapLoading: false,   // loading saat request token
+            // ── Xendit QRIS Dinamis state ──
+            xenditQrString: null, // String QR dari Xendit
+            xenditQrImage: null,  // Data URL base64 image dari qrcode.js
+            xenditLoading: false, // Loading saat request QR Xendit
 
             get cartCount() { return this.cart.reduce((s, i) => s + i.qty, 0); },
             get cartTotal() { return this.cart.reduce((s, i) => s + i.subtotal, 0); },
@@ -755,9 +773,10 @@
                         }
                         this.showCheckout = false;
                         this.orderSuccess  = true;
-                        // Mulai polling hanya untuk QRIS (kirim order_id untuk ambil snap token)
+                        // Mulai polling untuk semua metode, minta QR ke Xendit jika QRIS
                         if (this.payment === 'qris') {
                             this.startQrisPolling(data.order_id);
+                            this.fetchXenditQr(data.order_id);
                         }
                     } else {
                         alert('Gagal mengirim pesanan. Coba lagi.');
@@ -766,6 +785,33 @@
                     alert('Koneksi bermasalah. Silakan coba lagi.');
                 } finally {
                     this.submitting = false;
+                }
+            },
+
+            // ── Fetch QR Xendit ────────────────────────────────────────────
+            async fetchXenditQr(orderId) {
+                this.xenditLoading = true;
+                try {
+                    const res = await fetch('/order/payment/create/' + orderId, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name=csrf-token]').content,
+                        },
+                    });
+                    const data = await res.json();
+                    console.log('Xendit QR API Response:', data);
+                    if (data.success && data.qr_string) {
+                        this.xenditQrString = data.qr_string;
+                        // Generate QR image URL using free QRServer API
+                        this.xenditQrImage = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(this.xenditQrString);
+                    } else {
+                        this.xenditQrString = null;
+                    }
+                } catch (e) {
+                    this.xenditQrString = null;
+                } finally {
+                    this.xenditLoading = false;
                 }
             },
 
@@ -784,8 +830,9 @@
                     this.qrisTotal      = 0;
                     this.payment        = 'qris';
                     this.orderNumber    = '';
-                    this.snapToken      = null;
-                    this.snapLoading    = false;
+                    this.xenditQrString = null;
+                    this.xenditQrImage  = null;
+                    this.xenditLoading  = false;
                 }, 350);
             },
         };

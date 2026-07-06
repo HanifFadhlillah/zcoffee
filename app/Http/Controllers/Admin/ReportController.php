@@ -36,6 +36,9 @@ class ReportController extends Controller
 
         $query = Order::with('items')->where('status', 'completed');
 
+        // Default filename (fallback)
+        $filename = 'Rekap_Penjualan_' . now()->format('Y-m-d');
+
         if ($period === 'today') {
             $query->today();
             $filename = 'Rekap_Penjualan_Hari_Ini_' . now()->format('Y-m-d');

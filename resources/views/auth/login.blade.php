@@ -25,7 +25,7 @@
                     <label class="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-1.5">Email</label>
                     <input type="email" name="email" value="{{ old('email') }}" required autofocus
                            class="w-full border border-stone-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-stone-900 transition-colors @error('email') border-red-300 bg-red-50 @enderror"
-                           placeholder="admin@zcoffee.id">
+                           placeholder="Masukkan email">
                     @error('email') <p class="text-red-500 text-xs mt-1">{{ $message }}</p> @enderror
                 </div>
 
@@ -49,9 +49,7 @@
             </form>
         </div>
 
-        <p class="text-center text-white/30 text-xs mt-6">
-            Default: admin@zcoffee.id / password
-        </p>
+
     </div>
 </body>
 </html>

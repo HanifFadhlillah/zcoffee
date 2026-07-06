@@ -15,7 +15,7 @@ class UserSeeder extends Seeder
             [
                 'name'     => 'Admin ZCoffee',
                 'email'    => 'admin@zcoffee.id',
-                'password' => Hash::make('password'),
+                'password' => Hash::make('adminsudahdatang48'),
                 'role'     => 'admin',
             ]
         );
@@ -30,6 +30,6 @@ class UserSeeder extends Seeder
             ]
         );
 
-        $this->command->info('✅ Users seeded: admin@zcoffee.id & kasir@zcoffee.id (password: password)');
+        $this->command->info('✅ Users seeded: admin@zcoffee.id & kasir@zcoffee.id');
     }
 }

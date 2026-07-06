@@ -60,10 +60,12 @@ class Menu extends Model
     public function getCategoryLabelAttribute(): string
     {
         return match ($this->category) {
-            'espresso'  => 'Espresso Based',
-            'manual'    => 'Manual Brewed',
-            'noncoffee' => 'Non Coffee',
-            default     => $this->category,
+            'espresso'   => 'Espresso Based',
+            'manual'     => 'Manual Brewed',
+            'noncoffee'  => 'Non Coffee',
+            'maincourse' => 'Main Course',
+            'snack'      => 'Snack',
+            default      => ucfirst($this->category),
         };
     }
 

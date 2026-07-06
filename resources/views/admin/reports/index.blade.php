@@ -65,7 +65,7 @@
                                 <span class="font-medium text-stone-900">{{ $order->order_number }}</span>
                             </td>
                             <td class="px-5 py-4">
-                                Meja {{ $order->table_number }}
+                                {{ $order->table_number ? 'Meja ' . $order->table_number : 'Take Away' }}
                             </td>
                             <td class="px-5 py-4">
                                 <span class="text-xs font-semibold uppercase tracking-wider px-2 py-1 rounded border {{ $order->payment_method === 'qris' ? 'border-blue-200 text-blue-600 bg-blue-50' : 'border-green-200 text-green-700 bg-green-50' }}">
