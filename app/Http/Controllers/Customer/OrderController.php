@@ -152,6 +152,36 @@ class OrderController extends Controller
             return response()->json(['success' => false, 'message' => 'Order tidak ditemukan.'], 404);
         }
 
+        // Failsafe: Jika order masih pending QRIS, cek langsung status ke Midtrans API
+        if ($order->status === 'pending' && $order->payment_method === 'qris') {
+            try {
+                $serverKey    = config('midtrans.server_key');
+                $isProduction = config('midtrans.is_production');
+                $baseUrl      = $isProduction
+                    ? "https://api.midtrans.com/v2/{$order->order_number}/status"
+                    : "https://api.sandbox.midtrans.com/v2/{$order->order_number}/status";
+
+                $response = \Illuminate\Support\Facades\Http::withBasicAuth($serverKey, '')
+                    ->get($baseUrl);
+
+                if ($response->successful()) {
+                    $txStatus    = $response->json('transaction_status');
+                    $fraudStatus = $response->json('fraud_status') ?? 'accept';
+                    $isPaidTx    = ($txStatus === 'settlement') || ($txStatus === 'capture' && $fraudStatus === 'accept');
+
+                    if ($isPaidTx) {
+                        $order->markAsProcessing();
+                        broadcast(new \App\Events\NewOrderReceived($order))->toOthers();
+                        \Illuminate\Support\Facades\Log::info('Midtrans checkPayment fallback: order paid', [
+                            'order_number' => $order->order_number
+                        ]);
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Ignore fallback check exception
+            }
+        }
+
         $items = $order->items->map(fn ($item) => [
             'name'        => $item->menu_name,
             'qty'         => $item->quantity,
