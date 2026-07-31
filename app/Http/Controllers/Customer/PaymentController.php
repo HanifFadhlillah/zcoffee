@@ -130,8 +130,8 @@ class PaymentController extends Controller
             $midtransId        = $payload['transaction_id']     ?? '';
 
             if (empty($orderId)) {
-                Log::warning('Midtrans webhook: order_id kosong', $payload);
-                return response()->json(['message' => 'Invalid payload'], 400);
+                Log::info('Midtrans webhook: test ping received', $payload);
+                return response()->json(['message' => 'OK']);
             }
 
             // Cari order berdasarkan order_number
