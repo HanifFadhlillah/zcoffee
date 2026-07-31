@@ -373,38 +373,32 @@
                     </p>
                     <p class="text-xs mb-5" style="color: rgba(26,26,26,0.4);">Silakan scan QR Code di bawah ini untuk membayar</p>
 
-                    {{-- Kartu pembayaran QR Dinamis (Xendit) --}}
+                    {{-- Kartu pembayaran Midtrans Snap --}}
                     <div class="rounded-2xl p-5 mb-5 w-full max-w-xs mx-auto"
                          style="background: var(--c-white); border: 1px solid rgba(139,90,0,0.15);">
                         <p class="text-xs mb-1" style="color: rgba(26,26,26,0.4);">Total Tagihan</p>
                         <p class="font-bold text-2xl mb-4" style="color: var(--c-black);" x-text="'Rp ' + formatNum(qrisTotal)"></p>
 
-                        {{-- Loading spinner saat QR sedang dimuat --}}
-                        <div x-show="xenditLoading" class="flex flex-col items-center justify-center py-6 gap-3">
+                        {{-- Loading spinner saat Snap sedang dimuat --}}
+                        <div x-show="snapLoading" class="flex flex-col items-center justify-center py-6 gap-3">
                             <div class="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin"
                                  style="border-color: rgba(196,125,26,0.3); border-top-color: var(--c-golden);"></div>
-                            <p class="text-xs" style="color: rgba(26,26,26,0.4);">Memuat QR Code...</p>
+                            <p class="text-xs" style="color: rgba(26,26,26,0.4);">Membuka halaman pembayaran...</p>
                         </div>
 
-                        {{-- QR Dinamis dari Xendit (Image rendered via qrcode.js) --}}
-                        <div x-show="!xenditLoading && xenditQrImage"
-                             class="bg-white p-2 rounded-xl border border-stone-100 shadow-sm mx-auto w-48 h-auto overflow-hidden flex items-center justify-center">
-                            <img :src="xenditQrImage" class="w-full h-auto object-contain" alt="Xendit Dynamic QR">
+                        {{-- Pesan saat Snap sudah terbuka / menunggu --}}
+                        <div x-show="!snapLoading" class="flex flex-col items-center gap-2 py-3">
+                            <div class="text-4xl">📱</div>
+                            <p class="text-sm font-semibold text-center" style="color: var(--c-black);">Selesaikan pembayaran<br>di jendela Midtrans yang terbuka</p>
+                            <p class="text-xs text-center" style="color: rgba(26,26,26,0.4);">Pilih metode QRIS, GoPay, OVO, atau lainnya</p>
+                            <button @click="fetchSnapToken(currentOrderId)"
+                                class="mt-2 px-4 py-2 rounded-xl text-xs font-semibold transition-colors"
+                                style="background: rgba(196,125,26,0.1); color: var(--c-bean); border: 1px solid rgba(196,125,26,0.3);"
+                                onmouseover="this.style.background='rgba(196,125,26,0.2)';"
+                                onmouseout="this.style.background='rgba(196,125,26,0.1);'">🔄 Buka ulang jendela pembayaran</button>
                         </div>
 
-                        {{-- Fallback: QR Statis jika Xendit gagal --}}
-                        <div x-show="!xenditLoading && !xenditQrImage"
-                             class="bg-white p-2 rounded-xl border border-stone-100 shadow-sm mx-auto w-48 h-auto overflow-hidden flex items-center justify-center">
-                            <img src="{{ asset('images/qris_zcoffeex.jpeg') }}" class="w-full h-auto object-contain" alt="QRIS ZCoffee">
-                        </div>
-
-                        <p class="text-xs mt-4 text-stone-500">Gunakan aplikasi m-banking atau e-wallet (GoPay, OVO, DANA, ShopeePay)</p>
-                        <p x-show="xenditQrImage" class="text-xs mt-1 font-semibold" style="color: var(--c-bean);">
-                            ✅ QR unik untuk transaksi ini — nominal sudah tertera
-                        </p>
-                        <p x-show="!xenditLoading && !xenditQrImage" class="text-xs mt-1 text-amber-600 font-semibold">
-                            Bayar sesuai total tagihan di atas, kasir akan konfirmasi otomatis.
-                        </p>
+                        <p class="text-xs mt-4 text-stone-500 text-center">Pembayaran diproses oleh Midtrans.<br>Sistem akan otomatis terdeteksi setelah berhasil.</p>
                     </div>
 
                     {{-- Countdown Timer --}}
@@ -591,10 +585,9 @@
             _pollingId: null,
             _countdownId: null,
 
-            // ── Xendit QRIS Dinamis state ──
-            xenditQrString: null, // String QR dari Xendit
-            xenditQrImage: null,  // Data URL base64 image dari qrcode.js
-            xenditLoading: false, // Loading saat request QR Xendit
+            // ── Midtrans Snap state ──
+            snapLoading: false,   // Loading saat request Snap token
+            currentOrderId: null, // Simpan order ID untuk tombol "buka ulang"
 
             get cartCount() { return this.cart.reduce((s, i) => s + i.qty, 0); },
             get cartTotal() { return this.cart.reduce((s, i) => s + i.subtotal, 0); },
@@ -773,10 +766,11 @@
                         }
                         this.showCheckout = false;
                         this.orderSuccess  = true;
-                        // Mulai polling untuk semua metode, minta QR ke Xendit jika QRIS
+                        // Mulai polling untuk semua metode, buka Midtrans Snap jika QRIS
                         if (this.payment === 'qris') {
+                            this.currentOrderId = data.order_id;
                             this.startQrisPolling(data.order_id);
-                            this.fetchXenditQr(data.order_id);
+                            this.fetchSnapToken(data.order_id);
                         }
                     } else {
                         alert('Gagal mengirim pesanan. Coba lagi.');
@@ -788,11 +782,14 @@
                 }
             },
 
-            // ── Fetch QR Xendit ────────────────────────────────────────────
-            async fetchXenditQr(orderId) {
-                this.xenditLoading = true;
+            // ── Fetch Midtrans Snap Token & Buka Popup ────────────────────
+            async fetchSnapToken(orderId) {
+                this.snapLoading = true;
                 try {
-                    const res = await fetch('/order/payment/create/' + orderId, {
+                    if (typeof window.snap === 'undefined') {
+                        throw new Error('Midtrans Snap.js belum ter-load. Pastikan koneksi internet aktif.');
+                    }
+                    const res = await fetch('/order/payment/snap/' + orderId, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -800,18 +797,38 @@
                         },
                     });
                     const data = await res.json();
-                    console.log('Xendit QR API Response:', data);
-                    if (data.success && data.qr_string) {
-                        this.xenditQrString = data.qr_string;
-                        // Generate QR image URL using free QRServer API
-                        this.xenditQrImage = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(this.xenditQrString);
+                    if (data.success && data.snap_token) {
+                        this.snapLoading = false;
+                        // Buka Midtrans Snap popup
+                        window.snap.pay(data.snap_token, {
+                            onSuccess: (result) => {
+                                // Pembayaran sukses — hentikan polling, tandai paid
+                                this.stopPolling();
+                                this.paymentPaid = true;
+                                // Muat detail item untuk ditampilkan di summary
+                                this.checkPaymentStatus();
+                            },
+                            onPending: (result) => {
+                                // Masih pending — polling akan tetap jalan
+                                console.log('Midtrans pending:', result);
+                            },
+                            onError: (result) => {
+                                console.error('Midtrans error:', result);
+                                alert('Terjadi kesalahan saat pembayaran. Silakan coba lagi.');
+                            },
+                            onClose: () => {
+                                // User tutup popup — polling tetap jalan, bisa buka lagi
+                                console.log('Snap popup ditutup');
+                            },
+                        });
                     } else {
-                        this.xenditQrString = null;
+                        this.snapLoading = false;
+                        alert(data.message || 'Gagal memuat halaman pembayaran. Silakan coba lagi.');
                     }
                 } catch (e) {
-                    this.xenditQrString = null;
-                } finally {
-                    this.xenditLoading = false;
+                    this.snapLoading = false;
+                    console.error('Snap token fetch error:', e);
+                    alert('Terjadi kendala: ' + e.message);
                 }
             },
 
@@ -830,9 +847,8 @@
                     this.qrisTotal      = 0;
                     this.payment        = 'qris';
                     this.orderNumber    = '';
-                    this.xenditQrString = null;
-                    this.xenditQrImage  = null;
-                    this.xenditLoading  = false;
+                    this.snapLoading    = false;
+                    this.currentOrderId = null;
                 }, 350);
             },
         };

@@ -24,7 +24,7 @@ class Order extends Model
         'snap_token',
         'snap_url',
         'midtrans_transaction_id',
-        // Xendit QRIS
+        // Legacy Xendit QRIS fields (tidak aktif, ditinggalkan untuk kompatibilitas data lama)
         'xendit_qr_id',
         'xendit_qr_string',
     ];
@@ -50,7 +50,15 @@ class Order extends Model
     public function scopeCompleted($query)    { return $query->where('status', 'completed'); }
     public function scopeActiveOrders($query) 
     { 
-        return $query->whereIn('status', ['pending', 'processing']);
+        // Hanya tampilkan order 'processing' ATAU order 'cash' yang pending bayar kasir.
+        // Order QRIS yang masih 'pending' (belum dibayar) TIDAK ditampilkan di antrean kasir.
+        return $query->where(function ($q) {
+            $q->where('status', 'processing')
+              ->orWhere(function ($q2) {
+                  $q2->where('status', 'pending')
+                     ->where('payment_method', 'cash');
+              });
+        });
     }
 
     public function scopeToday($query)

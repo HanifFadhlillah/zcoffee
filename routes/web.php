@@ -24,12 +24,12 @@ Route::prefix('order')->name('order.')->group(function () {
     Route::get('/check/{orderNumber}', [CustomerOrderController::class, 'checkPayment'])
         ->name('check');
 
-    // ── Xendit QRIS ─────────────────────────────────────────────────────────
-    Route::post('/payment/create/{order}', [CustomerPaymentController::class, 'create'])
-        ->name('payment.create');
+    // ── Midtrans Snap ────────────────────────────────────────────────────────
+    Route::post('/payment/snap/{order}', [CustomerPaymentController::class, 'snap'])
+        ->name('payment.snap');
 });
 
-// Xendit webhook — diverifikasi via x-callback-token
+// Midtrans webhook — diverifikasi via signature_key (SHA512)
 Route::post('/payment/notification', [CustomerPaymentController::class, 'notification'])
     ->name('payment.notification');
 

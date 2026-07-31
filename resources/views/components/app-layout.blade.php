@@ -18,6 +18,10 @@
 <body class="h-full bg-stone-50 font-sans antialiased text-stone-900">
     {{ $slot }}
 
+    {{-- Midtrans Snap.js — wajib ada sebelum script halaman --}}
+    <script src="{{ config('midtrans.snap_url') }}"
+            data-client-key="{{ config('midtrans.client_key') }}"></script>
+
     @stack('scripts')
 </body>
 </html>

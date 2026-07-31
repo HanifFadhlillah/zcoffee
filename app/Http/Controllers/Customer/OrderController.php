@@ -115,8 +115,11 @@ class OrderController extends Controller
             $order->load('items.menu');
             DB::commit();
 
-            // 🔔 Broadcast real-time ke kasir
-            broadcast(new NewOrderReceived($order))->toOthers();
+            // 🔔 Broadcast real-time ke kasir HANYA jika metode pembayaran Cash.
+            // Untuk QRIS, broadcast dikirim saat Midtrans webhook mengonfirmasi pembayaran berhasil (status = processing).
+            if ($order->payment_method === 'cash') {
+                broadcast(new NewOrderReceived($order))->toOthers();
+            }
 
         } catch (\Throwable $e) {
             DB::rollBack();

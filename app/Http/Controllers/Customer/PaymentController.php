@@ -11,10 +11,10 @@ use Illuminate\Support\Facades\Http;
 class PaymentController extends Controller
 {
     /**
-     * Buat transaksi Xendit QRIS Dinamis dan kembalikan QR string.
-     * POST /payment/create/{order}
+     * Buat Midtrans Snap Token dan kembalikan ke frontend.
+     * POST /order/payment/snap/{order}
      */
-    public function create(Order $order)
+    public function snap(Order $order)
     {
         if ($order->payment_method !== 'qris' || $order->status !== 'pending') {
             return response()->json([
@@ -23,54 +23,67 @@ class PaymentController extends Controller
             ], 422);
         }
 
-        // Jika sudah ada QR ID Xendit, kembalikan yang lama
-        if ($order->xendit_qr_id && $order->xendit_qr_string) {
+        // Jika sudah ada snap_token, kembalikan yang lama (hindari double charge)
+        if ($order->snap_token) {
             return response()->json([
-                'success'   => true,
-                'qr_string' => $order->xendit_qr_string,
+                'success'    => true,
+                'snap_token' => $order->snap_token,
+                'snap_url'   => $order->snap_url,
             ]);
         }
 
         try {
-            $secretKey = config('xendit.secret_key');
-            
-            $response = Http::withBasicAuth($secretKey, '')
-                ->withHeaders([
-                    'api-version' => '2022-07-31'
-                ])
-                ->post('https://api.xendit.co/qr_codes', [
-                    'reference_id' => $order->order_number,
-                    'type'         => 'DYNAMIC',
-                    'currency'     => 'IDR',
-                    'amount'       => (int) $order->total_price,
-                ]);
+            $serverKey   = config('midtrans.server_key');
+            $isProduction = config('midtrans.is_production');
 
-            if (!$response->successful()) {
-                Log::error('Xendit QR Error Response', ['body' => $response->json()]);
-                throw new \Exception('Failed to generate QR string from Xendit API');
+            $baseUrl = $isProduction
+                ? 'https://app.midtrans.com/snap/v1/transactions'
+                : 'https://app.sandbox.midtrans.com/snap/v1/transactions';
+
+            $payload = [
+                'transaction_details' => [
+                    'order_id'     => $order->order_number,
+                    'gross_amount' => (int) $order->total_price,
+                ],
+                'customer_details' => [
+                    'first_name' => $order->customer_note ?: 'Pelanggan',
+                ],
+                'expiry' => [
+                    'duration' => 10,
+                    'unit'     => 'minute',
+                ],
+            ];
+
+            $response = Http::withBasicAuth($serverKey, '')
+                ->post($baseUrl, $payload);
+
+            if (! $response->successful()) {
+                Log::error('Midtrans Snap Error Response', ['body' => $response->json()]);
+                throw new \Exception('Failed to get Snap token from Midtrans API');
             }
 
-            $data = $response->json();
-            $qrId = $data['id'] ?? '';
-            $qrString = $data['qr_string'] ?? '';
+            $data      = $response->json();
+            $snapToken = $data['token'] ?? null;
+            $snapUrl   = $data['redirect_url'] ?? null;
 
-            if (!$qrString) {
-                throw new \Exception('Failed to generate QR string from Xendit');
+            if (! $snapToken) {
+                throw new \Exception('Snap token tidak tersedia dari Midtrans');
             }
 
-            // Simpan QR ID & string ke database
+            // Simpan token ke database
             $order->update([
-                'xendit_qr_id'     => $qrId,
-                'xendit_qr_string' => $qrString,
+                'snap_token' => $snapToken,
+                'snap_url'   => $snapUrl,
             ]);
 
             return response()->json([
-                'success'   => true,
-                'qr_string' => $qrString,
+                'success'    => true,
+                'snap_token' => $snapToken,
+                'snap_url'   => $snapUrl,
             ]);
 
         } catch (\Throwable $e) {
-            Log::error('Xendit create QRIS error', [
+            Log::error('Midtrans snap token error', [
                 'order_id' => $order->id,
                 'message'  => $e->getMessage(),
             ]);
@@ -83,7 +96,7 @@ class PaymentController extends Controller
     }
 
     /**
-     * Webhook / Notification handler dari Xendit.
+     * Webhook / Notification handler dari Midtrans.
      * POST /payment/notification
      */
     public function notification(Request $request)
@@ -91,53 +104,67 @@ class PaymentController extends Controller
         try {
             $payload = $request->all();
 
-            Log::info('Xendit webhook received', $payload);
+            Log::info('Midtrans webhook received', $payload);
 
-            // Verifikasi webhook token dari Xendit
-            $callbackToken = $request->header('x-callback-token');
-            $expectedToken = config('xendit.webhook_token');
-            
-            if (!empty($expectedToken) && $callbackToken !== $expectedToken) {
-                Log::warning('Xendit webhook: Unauthorized callback token', ['token' => $callbackToken]);
-                return response()->json(['message' => 'Unauthorized'], 401);
+            // Verifikasi signature key dari Midtrans
+            // Format: SHA512(order_id + status_code + gross_amount + server_key)
+            $serverKey         = config('midtrans.server_key');
+            $orderId           = $payload['order_id']           ?? '';
+            $statusCode        = $payload['status_code']        ?? '';
+            $grossAmount       = $payload['gross_amount']        ?? '';
+            $incomingSignature = $payload['signature_key']      ?? '';
+
+            if ($serverKey && $incomingSignature) {
+                $expectedSignature = hash('sha512', $orderId . $statusCode . $grossAmount . $serverKey);
+                if ($incomingSignature !== $expectedSignature) {
+                    Log::warning('Midtrans webhook: signature tidak valid', [
+                        'incoming' => $incomingSignature,
+                        'expected' => $expectedSignature,
+                    ]);
+                    return response()->json(['message' => 'Unauthorized'], 401);
+                }
             }
 
-            // Xendit mengirim payload: { event, data: { reference_id, status } }
-            // Untuk event QR_CODE.SUCCEEDED
-            $event = $payload['event'] ?? '';
-            $status = $payload['data']['status'] ?? '';
-            $orderNumber = $payload['data']['reference_id'] ?? '';
+            $transactionStatus = $payload['transaction_status'] ?? '';
+            $fraudStatus       = $payload['fraud_status']       ?? 'accept';
+            $midtransId        = $payload['transaction_id']     ?? '';
 
-            if (empty($orderNumber)) {
-                Log::warning('Xendit webhook: payload tidak valid (tanpa reference_id)', $payload);
+            if (empty($orderId)) {
+                Log::warning('Midtrans webhook: order_id kosong', $payload);
                 return response()->json(['message' => 'Invalid payload'], 400);
             }
 
             // Cari order berdasarkan order_number
-            $order = Order::where('order_number', $orderNumber)->first();
+            $order = Order::where('order_number', $orderId)->first();
 
-            if (!$order) {
-                Log::warning('Xendit webhook: order tidak ditemukan', ['order_number' => $orderNumber]);
+            if (! $order) {
+                Log::warning('Midtrans webhook: order tidak ditemukan', ['order_id' => $orderId]);
                 return response()->json(['message' => 'Order not found'], 404);
             }
 
-            // Proses jika status COMPLETED
-            if ($event === 'qr.payment' && (strtoupper($status) === 'COMPLETED' || strtoupper($status) === 'PAID')) {
-                if ($order->status === 'pending') {
-                    // Tandai order sebagai processing dan broadcast ke kasir
-                    $order->markAsProcessing();
-                    broadcast(new \App\Events\NewOrderReceived($order))->toOthers();
+            // Simpan midtrans_transaction_id
+            if ($midtransId) {
+                $order->update(['midtrans_transaction_id' => $midtransId]);
+            }
 
-                    Log::info('Xendit: pembayaran QRIS berhasil, pesanan masuk antrean', [
-                        'order_number' => $order->order_number,
-                    ]);
-                }
+            // Proses berdasarkan status transaksi Midtrans
+            $isPaid = ($transactionStatus === 'settlement')
+                || ($transactionStatus === 'capture' && $fraudStatus === 'accept');
+
+            if ($isPaid && $order->status === 'pending') {
+                $order->markAsProcessing();
+                broadcast(new \App\Events\NewOrderReceived($order))->toOthers();
+
+                Log::info('Midtrans: pembayaran berhasil, pesanan masuk antrean', [
+                    'order_number' => $order->order_number,
+                    'status'       => $transactionStatus,
+                ]);
             }
 
             return response()->json(['message' => 'OK']);
 
         } catch (\Throwable $e) {
-            Log::error('Xendit webhook error', ['message' => $e->getMessage()]);
+            Log::error('Midtrans webhook error', ['message' => $e->getMessage()]);
             return response()->json(['message' => 'Server error'], 500);
         }
     }
