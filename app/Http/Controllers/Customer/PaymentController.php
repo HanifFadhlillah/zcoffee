@@ -106,14 +106,20 @@ class PaymentController extends Controller
 
             Log::info('Midtrans webhook received', $payload);
 
-            // Verifikasi signature key dari Midtrans
-            // Format: SHA512(order_id + status_code + gross_amount + server_key)
             $serverKey         = config('midtrans.server_key');
             $orderId           = $payload['order_id']           ?? '';
             $statusCode        = $payload['status_code']        ?? '';
             $grossAmount       = $payload['gross_amount']        ?? '';
             $incomingSignature = $payload['signature_key']      ?? '';
 
+            // Jika order_id kosong (seperti saat tombol "Tes URL notifikasi" di-klik di Midtrans Dashboard)
+            if (empty($orderId)) {
+                Log::info('Midtrans webhook: test ping received', $payload);
+                return response()->json(['message' => 'OK']);
+            }
+
+            // Verifikasi signature key dari Midtrans
+            // Format: SHA512(order_id + status_code + gross_amount + server_key)
             if ($serverKey && $incomingSignature) {
                 $expectedSignature = hash('sha512', $orderId . $statusCode . $grossAmount . $serverKey);
                 if ($incomingSignature !== $expectedSignature) {
@@ -128,11 +134,6 @@ class PaymentController extends Controller
             $transactionStatus = $payload['transaction_status'] ?? '';
             $fraudStatus       = $payload['fraud_status']       ?? 'accept';
             $midtransId        = $payload['transaction_id']     ?? '';
-
-            if (empty($orderId)) {
-                Log::info('Midtrans webhook: test ping received', $payload);
-                return response()->json(['message' => 'OK']);
-            }
 
             // Cari order berdasarkan order_number
             $order = Order::where('order_number', $orderId)->first();
